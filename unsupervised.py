@@ -21,15 +21,25 @@ def train(args):
     data_path = args.data_path
     model_name = args.model
     out_path = args.out_dir
+    mode = args.mode
 
     sentences = get_sentences(data_path, "\n")
     word_embedding_model = models.Transformer(model_name)
     pooling_model = models.Pooling(word_embedding_model.get_word_embedding_dimension(), 'cls')
-    model = SentenceTransformer(modules=[word_embedding_model, pooling_model])
+    model = SentenceTransformer(modules=[word_embedding_model, pooling_model])  
 
     sents = [InputExample(texts=[s, s]) for s in sentences]
-    train_dataloader = DataLoader(sents, batch_size=64, shuffle=True, drop_last=True)
-    train_loss = losses.ContrastiveTensionLossInBatchNegatives(model)
+    train_dataloader = DataLoader(sents, batch_size=16, shuffle=True, drop_last=True)
+
+    if mode == "ct":
+        train_loss = losses.ContrastiveTensionLossInBatchNegatives(model)
+    if mode == "simcse":
+        train_loss = losses.MultipleNegativesRankingLoss(model)
+        train_dataloader = DataLoader(sents, batch_size=16, shuffle=True)
+    if model == "tsdae":
+        train_loss = losses.DenoisingAutoEncoderLoss(model)
+        sent = datasets.DenoisingAutoEncoderDataset(sentences)
+        train_dataloader = DataLoader(sent, batch_size=64, shuffle=True)
 
     warmup_steps = math.ceil(len(train_dataloader) * 25 * 0.1)  
 
@@ -65,10 +75,6 @@ def predict(args):
     model = SentenceTransformer(trained_model_path)
     evaluate(model, df, out_file)
 
-
-
-
-
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='CT')
     parser.add_argument('-d', '--data_path', default="./data/eng_train.csv", type=str, 
@@ -77,6 +83,8 @@ if __name__=='__main__':
                                     help="languages eg. eng, mar, tel, amh")
     parser.add_argument('-m', '--model', default="bert-base-uncased", type=str, 
                                     help="pretrained huggingface mpdel name")
+    parser.add_argument('-z', '--mode', default="simcse", type=str, 
+                                    help="tdsae,simcse,ct")
     parser.add_argument('-o', '--out_dir', default="./out/eng/", type=str, 
                                     help="path to save trained model")
     parser.add_argument('-e', '--eval_file', default="./data/eng_dev.csv", type=str, 
